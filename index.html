@@ -41,7 +41,8 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--fg);
     font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line);
+  #top { position: fixed; top: 0; left: 0; right: 0; z-index: 3; background: var(--bg); }
+  header { background: var(--bg); border-bottom: 1px solid var(--line);
     padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top)); display: flex; align-items: center; gap: 10px; }
   header h1 { font-size: 18px; margin: 0; flex: 1; letter-spacing: .02em; cursor: pointer; }
   header .status { font-size: 12px; color: var(--muted); }
@@ -50,7 +51,7 @@
     border-radius: 8px; padding: 6px 10px; cursor: pointer; }
   button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   button.icon { padding: 6px 9px; }
-  main { padding: 8px 16px calc(40px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
+  main { padding: calc(var(--top-h, 100px) + 8px) 16px calc(40px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
   header { padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
   #btnFull { display: none; }
   body.can-fullscreen #btnFull { display: inline-block; }
@@ -65,7 +66,7 @@
   form.setup input, form.setup select { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
     background: var(--card); color: var(--fg); width: 100%; }
   .day { margin-top: 18px; }
-  .weekbar { position: sticky; top: 49px; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line);
+  .weekbar { background: var(--bg); border-bottom: 1px solid var(--line);
     display: flex; align-items: center; gap: 6px; padding: 6px 16px; padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
   .weekbar .label { flex: 1; text-align: center; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .weekbar .label small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
@@ -74,7 +75,7 @@
   .week { border-top: 2px solid var(--line); margin-top: 22px; padding-top: 2px; }
   .week:first-of-type { border-top: 0; margin-top: 0; }
   .day h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
-    margin: 0 0 6px; position: sticky; top: 97px; background: var(--bg); padding: 6px 0; z-index: 1; }
+    margin: 0 0 6px; position: sticky; top: var(--top-h, 100px); background: var(--bg); padding: 6px 0; z-index: 1; }
   .day.today h2 { color: var(--accent); }
   .day.weekend h2 { opacity: .8; }
   .empty { color: var(--dim); font-size: 14px; padding: 6px 0; }
@@ -107,6 +108,7 @@
 </style>
 </head>
 <body>
+<div id="top">
 <header>
   <h1>xcal</h1>
   <span id="status" class="status"></span>
@@ -119,6 +121,7 @@
   <div class="label" id="weekLabel"></div>
   <button id="btnNext" aria-label="Next week">&#x203a;</button>
   <button id="btnNow" class="now">Now</button>
+</div>
 </div>
 <main id="main"></main>
 <script>
@@ -178,7 +181,7 @@
   function bind(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener('click', fn); }
 
   function showSetup(message) {
-    setStatus(''); weekbar.hidden = true;
+    setStatus(''); weekbar.hidden = true; layoutTop();
     show(
       (message ? '<div class="msg err">' + esc(message) + '</div>' : '') +
       '<form class="setup" id="setup">' +
@@ -389,12 +392,17 @@
     if (curWeek) html += '</section>';
     html += '<p class="foot">' + events.length + ' events · generated ' + (gen ? esc(gen.toLocaleString()) : '?') + '</p>';
     show(html);
-    weekbar.hidden = false;
+    weekbar.hidden = false; layoutTop();
     bind('lnkRetry', function (e) { e.preventDefault(); load({ scroll: false }); });
     if (scrollToToday) scrollToday(); else updateWeekbar();
   }
-  var HEAD = 100; // header + week bar
-  function scrollToEl(el) { if (el) window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.pageYOffset - HEAD)); }
+  var HEAD = 100; // header + week bar, measured
+  var topEl = document.getElementById('top');
+  function layoutTop() {
+    var h = topEl.offsetHeight; if (!h) return;
+    HEAD = h; document.documentElement.style.setProperty('--top-h', h + 'px');
+  }
+  function scrollToEl(el) { if (el) window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.pageYOffset - HEAD - 4)); }
   function scrollToday() { scrollToEl(document.getElementById('today')); }
   function currentWeek() {
     var secs = main.querySelectorAll('.week'), y = HEAD + 1, best = secs[0];
@@ -473,7 +481,8 @@
     if (ticking) return; ticking = true;
     (window.requestAnimationFrame || setTimeout)(function () { ticking = false; if (state.data) updateWeekbar(); });
   }, { passive: true });
-  applyTheme();
+  applyTheme(); layoutTop();
+  window.addEventListener('resize', layoutTop);
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden && state.data) { render(false); load({ scroll: true }); }
   });
