@@ -5,7 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex">
+<meta name="description" content="Calendar viewer for an encrypted data file.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f7f9">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1216">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="xcal">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>xcal</title>
+<!-- Paint the background before the stylesheet applies, so a launch from the home screen has no white frame. -->
+<style>html{background:#f6f7f9}@media (prefers-color-scheme: dark){html{background:#0f1216}}</style>
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --fg: #1b1f24; --muted: #6b7280; --line: #e3e6ea;
@@ -31,7 +43,10 @@
     border-radius: 8px; padding: 6px 10px; cursor: pointer; }
   button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   button.icon { padding: 6px 9px; }
-  main { padding: 8px 16px 40px; max-width: 720px; margin: 0 auto; }
+  main { padding: 8px 16px calc(40px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
+  header { padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+  #btnFull { display: none; }
+  body.can-fullscreen #btnFull { display: inline-block; }
   .msg { margin: 16px 0; padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); }
   .msg.err { background: var(--err-bg); color: var(--err); border-color: transparent; }
   .msg.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
@@ -78,6 +93,7 @@
   <h1>xcal</h1>
   <span id="status" class="status"></span>
   <button id="btnRefresh" class="icon" title="Refresh" aria-label="Refresh">&#x21bb;</button>
+  <button id="btnFull" class="icon" title="Fullscreen" aria-label="Fullscreen">&#x26F6;</button>
   <button id="btnSettings" class="icon" title="Settings" aria-label="Settings">&#x2699;</button>
 </header>
 <main id="main"></main>
@@ -249,7 +265,7 @@
 
   function eventHtml(ev, kind, dayK, now, i) {
     var past = ev._e <= now;
-    var cls = 'ev' + (past ? ' past' : '') + (ev.responseStatus === 'declined' ? ' declined' : '');
+    var cls = 'ev' + (past ? ' past' : '') + (ev.responseStatus === 'declined' || ev.isCancelled ? ' declined' : '');
     var time;
     if (kind === 'allday') {
       var days = Math.round((ev._e - ev._s) / 864e5);
@@ -263,6 +279,7 @@
     if (ev.busyStatus === 'oof') badges += '<span class="badge oof">out of office</span>';
     if (ev.busyStatus === 'free') badges += '<span class="badge">free</span>';
     if (ev.isPrivate) badges += '<span class="badge">private</span>';
+    if (ev.isCancelled) badges += '<span class="badge oof">cancelled</span>';
     if (ev.isRecurring) badges += '<span class="badge" title="recurring">&#x21bb;</span>';
     if (badges) badges = '<span class="badges">' + badges + '</span>';
 
@@ -292,6 +309,35 @@
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden && state.data && state.src && state.pass) load(false);
   });
+  window.addEventListener('online', function () { if (state.src && state.pass) load(false); });
+  window.addEventListener('offline', function () { if (state.data) setStatus('offline', true); });
+
+  // Fullscreen for a browser tab. An installed app is already full screen, and
+  // iOS has no fullscreen for pages, so the button only appears where it helps.
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  var root = document.documentElement;
+  if (!standalone && root.requestFullscreen && document.fullscreenEnabled) {
+    document.body.classList.add('can-fullscreen');
+    document.getElementById('btnFull').addEventListener('click', function () {
+      if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
+      else root.requestFullscreen({ navigationUI: 'hide' }).catch(function () {});
+    });
+    document.addEventListener('fullscreenchange', function () {
+      document.getElementById('btnFull').innerHTML = document.fullscreenElement ? '&#x2716;' : '&#x26F6;';
+    });
+  }
+
+  // The service worker makes the page installable on Android (Firefox and
+  // Chrome hand out a bookmark without one) and keeps the shell available
+  // offline. It is network first, so no update prompt is needed: an online
+  // launch always runs the version on the server.
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      var check = function () { reg.update().catch(function () {}); };
+      setInterval(check, 60 * 60 * 1000);
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+    }).catch(function (e) { if (window.console) console.debug('Service worker not registered:', e); });
+  }
 
   var m = /[#&]src=([^&]+)/.exec(location.hash), mp = /[#&]pass=([^&]+)/.exec(location.hash);
   if (m) { state.src = decodeURIComponent(m[1]); ls(LS.src, state.src); } else state.src = ls(LS.src);
