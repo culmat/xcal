@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>xcal</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --fg: #1b1f24; --muted: #6b7280; --line: #e3e6ea;
+    --accent: #2563eb; --accent-fg: #ffffff; --warn: #b45309; --warn-bg: #fef3c7;
+    --err: #b91c1c; --err-bg: #fee2e2; --dim: #9ca3af; --now: #dc2626; --today: #eff6ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --card: #171b21; --fg: #e6e8eb; --muted: #9aa3ad; --line: #262c34;
+      --accent: #60a5fa; --accent-fg: #0b1220; --warn: #fbbf24; --warn-bg: #3b2f0b;
+      --err: #f87171; --err-bg: #3b1111; --dim: #5b6570; --now: #f87171; --today: #16202e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line);
+    padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top)); display: flex; align-items: center; gap: 10px; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; letter-spacing: .02em; }
+  header .status { font-size: 12px; color: var(--muted); }
+  header .status.stale { color: var(--warn); }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--fg);
+    border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button.icon { padding: 6px 9px; }
+  main { padding: 8px 16px 40px; max-width: 720px; margin: 0 auto; }
+  .msg { margin: 16px 0; padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); }
+  .msg.err { background: var(--err-bg); color: var(--err); border-color: transparent; }
+  .msg.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+  form.setup { display: grid; gap: 10px; margin-top: 16px; }
+  form.setup label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  form.setup input { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); color: var(--fg); width: 100%; }
+  .day { margin-top: 18px; }
+  .day h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+    margin: 0 0 6px; position: sticky; top: 49px; background: var(--bg); padding: 6px 0; z-index: 1; }
+  .day.today h2 { color: var(--accent); }
+  .day.weekend h2 { opacity: .8; }
+  .empty { color: var(--dim); font-size: 14px; padding: 6px 0; }
+  .ev { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 10px 12px; margin-bottom: 6px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  .day.today .ev { background: var(--today); }
+  .ev.past { opacity: .55; }
+  .ev.declined .subj { text-decoration: line-through; }
+  .ev .time { font-size: 13px; color: var(--muted); white-space: nowrap; line-height: 1.3; }
+  .ev .time b { display: block; color: var(--fg); font-weight: 600; }
+  .ev .subj { font-weight: 600; }
+  .ev .loc { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badges { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
+  .badge { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.tent { border-style: dashed; }
+  .badge.oof { color: var(--warn); border-color: var(--warn); }
+  .details { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; font-size: 14px; display: none; }
+  .ev.open .details { display: block; }
+  .details dl { margin: 0 0 8px; display: grid; grid-template-columns: 90px 1fr; gap: 2px 8px; }
+  .details dt { color: var(--muted); }
+  .details dd { margin: 0; overflow-wrap: anywhere; }
+  .details pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 8px 0 0; color: var(--fg); }
+  .details a { color: var(--accent); }
+  .join { display: inline-block; margin: 4px 0 8px; padding: 8px 14px; border-radius: 8px;
+    background: var(--accent); color: var(--accent-fg) !important; text-decoration: none; font-weight: 600; }
+  .nowline { height: 2px; background: var(--now); margin: 2px 0 8px; position: relative; }
+  .nowline::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--now); }
+  .foot { margin-top: 30px; font-size: 12px; color: var(--dim); text-align: center; }
+  .spinner { color: var(--muted); font-size: 14px; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>xcal</h1>
+  <span id="status" class="status"></span>
+  <button id="btnRefresh" class="icon" title="Refresh" aria-label="Refresh">&#x21bb;</button>
+  <button id="btnSettings" class="icon" title="Settings" aria-label="Settings">&#x2699;</button>
+</header>
+<main id="main"></main>
+<script>
+(function () {
+  'use strict';
+  var LS = { src: 'xcal.src', pass: 'xcal.pass', blob: 'xcal.blob' };
+  var STALE_HOURS = 3;
+  var main = document.getElementById('main');
+  var statusEl = document.getElementById('status');
+  var state = { src: null, pass: null, data: null, offline: false };
+
+  function ls(k, v) {
+    try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); }
+    catch (e) { return null; }
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function linkify(s) {
+    return esc(s).replace(/https?:\/\/[^\s<>"']+/g, function (u) {
+      var t = u.replace(/[.,;:)\]]+$/, ''); var tail = u.slice(t.length);
+      return '<a href="' + t + '" target="_blank" rel="noopener">' + t + '</a>' + tail; });
+  }
+  function b64(s) { var bin = atob(s), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
+  function dayKey(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function fmtTime(d) { return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function fmtDay(d) { return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }); }
+  function fmtDayLong(d) { return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }); }
+  function fmtStamp(d) { return d.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }); }
+
+  // ---------------------------------------------------------------- views
+  function show(html) { main.innerHTML = html; }
+  function setStatus(text, stale) { statusEl.textContent = text || ''; statusEl.className = 'status' + (stale ? ' stale' : ''); }
+
+  function showSetup(message) {
+    setStatus('');
+    show(
+      (message ? '<div class="msg err">' + esc(message) + '</div>' : '') +
+      '<form class="setup" id="setup">' +
+      '<label>Data URL<input name="src" type="url" required autocomplete="off" spellcheck="false" value="' + esc(state.src || '') + '" placeholder="https://…/cal.enc"></label>' +
+      '<label>Passphrase<input name="pass" type="password" required autocomplete="current-password"></label>' +
+      '<button class="primary" type="submit">Open</button>' +
+      (ls(LS.blob) || state.src ? '<button type="button" id="btnForget">Forget everything on this device</button>' : '') +
+      '</form>');
+    var form = document.getElementById('setup');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      state.src = form.src.value.trim(); state.pass = form.pass.value;
+      ls(LS.src, state.src); ls(LS.pass, state.pass);
+      load(false);
+    });
+    var f = document.getElementById('btnForget');
+    if (f) f.addEventListener('click', forget);
+  }
+  function forget() {
+    ls(LS.src, null); ls(LS.pass, null); ls(LS.blob, null);
+    state = { src: null, pass: null, data: null, offline: false };
+    showSetup();
+  }
+
+  // ---------------------------------------------------------------- crypto
+  function decrypt(blobText, pass) {
+    var blob;
+    try { blob = JSON.parse(blobText); } catch (e) { return Promise.reject(new Error('Data is not valid JSON')); }
+    if (!blob || blob.v !== 1 || blob.kdf !== 'pbkdf2-sha256') return Promise.reject(new Error('Unsupported data format'));
+    var sub = window.crypto && window.crypto.subtle;
+    if (!sub) return Promise.reject(new Error('WebCrypto is not available in this browser (needs HTTPS)'));
+    var enc = new TextEncoder();
+    return sub.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey'])
+      .then(function (base) {
+        return sub.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64(blob.salt), iterations: blob.iter },
+          base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']); })
+      .then(function (key) { return sub.decrypt({ name: 'AES-GCM', iv: b64(blob.nonce), tagLength: 128 }, key, b64(blob.ct)); })
+      .then(function (pt) { return JSON.parse(new TextDecoder().decode(pt)); },
+            function () { throw new Error('WRONG_PASS'); });
+  }
+
+  // ---------------------------------------------------------------- load
+  function load(preferCache) {
+    if (!state.src || !state.pass) return showSetup();
+    show('<div class="spinner">Loading…</div>');
+    setStatus('');
+    var cached = ls(LS.blob);
+    var fetchP;
+    if (preferCache && cached) {
+      fetchP = Promise.resolve({ text: cached, offline: true });
+    } else {
+      var u = state.src + (state.src.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
+      fetchP = fetch(u, { cache: 'no-store', credentials: 'omit' })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+        .then(function (t) { return { text: t, offline: false }; })
+        .catch(function (err) {
+          if (cached) return { text: cached, offline: true, err: err };
+          throw new Error('Could not fetch data (' + err.message + '). Check the URL and your connection.');
+        });
+    }
+    fetchP.then(function (res) {
+      show('<div class="spinner">Decrypting…</div>');
+      return decrypt(res.text, state.pass).then(function (data) {
+        if (!res.offline) ls(LS.blob, res.text);
+        state.data = data; state.offline = res.offline; state.fetchErr = res.err;
+        render();
+      });
+    }).catch(function (err) {
+      if (err.message === 'WRONG_PASS') { ls(LS.pass, null); state.pass = null; showSetup('Wrong passphrase (or the data is corrupted). Please enter it again.'); }
+      else show('<div class="msg err">' + esc(err.message) + '</div><button class="primary" id="btnRetry">Retry</button>' +
+                (cached ? '' : '') + '<p class="foot"><a href="#" id="lnkSettings">Settings</a></p>'),
+           bind('btnRetry', function () { load(false); }), bind('lnkSettings', function (e) { e.preventDefault(); showSetup(); });
+    });
+  }
+  function bind(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener('click', fn); }
+
+  // ---------------------------------------------------------------- render
+  function render() {
+    var data = state.data, events = data.events || [];
+    var now = new Date(), todayKey = dayKey(now);
+    var gen = data.generated ? new Date(data.generated) : null;
+    var ageH = gen ? (now - gen) / 36e5 : Infinity;
+    setStatus((state.offline ? 'offline · ' : '') + (gen ? 'as of ' + fmtStamp(gen) : ''), ageH > STALE_HOURS);
+
+    var byDay = {};
+    function add(key, ev, kind) { (byDay[key] = byDay[key] || []).push({ ev: ev, kind: kind }); }
+    events.forEach(function (ev) {
+      var s = new Date(ev.start), e = new Date(ev.end);
+      ev._s = s; ev._e = e;
+      if (ev.allDay) {
+        var d = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+        var last = new Date(e.getTime() - 1); // end is exclusive midnight
+        var n = 0;
+        while (d <= last && n < 60) { add(dayKey(d), ev, 'allday'); d.setDate(d.getDate() + 1); n++; }
+      } else add(dayKey(s), ev, 'timed');
+    });
+    if (!byDay[todayKey]) byDay[todayKey] = [];
+    var keys = Object.keys(byDay).sort();
+
+    var html = '';
+    if (state.offline) html += '<div class="msg warn">Offline: showing the last downloaded data' + (state.fetchErr ? ' (' + esc(state.fetchErr.message) + ')' : '') + '.</div>';
+    else if (ageH > STALE_HOURS) html += '<div class="msg warn">Data is ' + Math.round(ageH) + ' hours old. The sync on the PC may not be running.</div>';
+
+    keys.forEach(function (k) {
+      var parts = k.split('-'), d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+      var isToday = k === todayKey, wk = d.getDay() === 0 || d.getDay() === 6;
+      var list = byDay[k].sort(function (a, b) {
+        if (a.kind !== b.kind) return a.kind === 'allday' ? -1 : 1;
+        return a.ev._s - b.ev._s; });
+      html += '<section class="day' + (isToday ? ' today' : '') + (wk ? ' weekend' : '') + '"' + (isToday ? ' id="today"' : '') + '>' +
+              '<h2>' + esc(isToday ? 'Today · ' + fmtDayLong(d) : fmtDay(d)) + '</h2>';
+      if (!list.length) html += '<div class="empty">Nothing scheduled</div>';
+      var nowDrawn = !isToday;
+      list.forEach(function (x, i) {
+        var ev = x.ev;
+        if (!nowDrawn && x.kind === 'timed' && ev._s > now) { html += '<div class="nowline"></div>'; nowDrawn = true; }
+        html += eventHtml(ev, x.kind, k, now, i);
+      });
+      if (!nowDrawn) html += '<div class="nowline"></div>';
+      html += '</section>';
+    });
+    html += '<p class="foot">' + events.length + ' events · generated ' + (gen ? esc(gen.toLocaleString()) : '?') + '</p>';
+    show(html);
+
+    main.addEventListener('click', function (e) {
+      var card = e.target.closest ? e.target.closest('.ev') : null;
+      if (!card || (e.target.tagName === 'A')) return;
+      card.classList.toggle('open');
+    });
+    var t = document.getElementById('today');
+    if (t) { var top = t.getBoundingClientRect().top + window.pageYOffset - 52; window.scrollTo(0, Math.max(0, top)); }
+  }
+
+  function eventHtml(ev, kind, dayK, now, i) {
+    var past = ev._e <= now;
+    var cls = 'ev' + (past ? ' past' : '') + (ev.responseStatus === 'declined' ? ' declined' : '');
+    var time;
+    if (kind === 'allday') {
+      var days = Math.round((ev._e - ev._s) / 864e5);
+      time = '<b>all day</b>' + (days > 1 ? days + ' days' : '');
+    } else {
+      var sameDay = dayKey(ev._e) === dayK || (ev._e - ev._s) < 864e5 && dayKey(new Date(ev._e - 1)) === dayK;
+      time = '<b>' + esc(fmtTime(ev._s)) + '</b>' + (sameDay ? esc(fmtTime(ev._e)) : '→ ' + esc(fmtDay(ev._e)) + ' ' + esc(fmtTime(ev._e)));
+    }
+    var badges = '';
+    if (ev.responseStatus === 'tentative' || ev.busyStatus === 'tentative') badges += '<span class="badge tent">tentative</span>';
+    if (ev.busyStatus === 'oof') badges += '<span class="badge oof">out of office</span>';
+    if (ev.busyStatus === 'free') badges += '<span class="badge">free</span>';
+    if (ev.isPrivate) badges += '<span class="badge">private</span>';
+    if (ev.isRecurring) badges += '<span class="badge" title="recurring">&#x21bb;</span>';
+    if (badges) badges = '<span class="badges">' + badges + '</span>';
+
+    var req = ev.required || [], opt = ev.optional || [], cats = ev.categories || [];
+    var det = '';
+    if (ev.meetingUrl) det += '<a class="join" href="' + esc(ev.meetingUrl) + '" target="_blank" rel="noopener">Join meeting</a>';
+    det += '<dl>';
+    if (ev.location) det += '<dt>Where</dt><dd>' + linkify(ev.location) + '</dd>';
+    if (ev.organizer) det += '<dt>Organizer</dt><dd>' + esc(ev.organizer) + '</dd>';
+    if (req.length) det += '<dt>Required</dt><dd>' + esc(req.join(', ')) + '</dd>';
+    if (opt.length) det += '<dt>Optional</dt><dd>' + esc(opt.join(', ')) + '</dd>';
+    if (ev.responseStatus && ev.responseStatus !== 'none') det += '<dt>Response</dt><dd>' + esc(ev.responseStatus) + '</dd>';
+    if (cats.length) det += '<dt>Categories</dt><dd>' + esc(cats.join(', ')) + '</dd>';
+    det += '</dl>';
+    if (ev.body && ev.body.trim()) det += '<pre>' + linkify(ev.body.trim()) + '</pre>';
+
+    return '<div class="' + cls + '" data-i="' + i + '">' +
+      '<div class="time">' + time + '</div>' +
+      '<div><div class="subj">' + esc(ev.subject || '(no subject)') + badges + '</div>' +
+      (ev.location ? '<div class="loc">' + esc(ev.location) + '</div>' : '') + '</div>' +
+      '<div class="details">' + det + '</div></div>';
+  }
+
+  // ---------------------------------------------------------------- boot
+  document.getElementById('btnRefresh').addEventListener('click', function () { load(false); });
+  document.getElementById('btnSettings').addEventListener('click', function () { showSetup(); });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && state.data && state.src && state.pass) load(false);
+  });
+
+  var m = /[#&]src=([^&]+)/.exec(location.hash);
+  if (m) {
+    state.src = decodeURIComponent(m[1]); ls(LS.src, state.src);
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  } else state.src = ls(LS.src);
+  state.pass = ls(LS.pass);
+  load(!navigator.onLine);
+})();
+</script>
+</body>
+</html>
