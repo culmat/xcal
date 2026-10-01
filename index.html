@@ -293,12 +293,10 @@
     if (!document.hidden && state.data && state.src && state.pass) load(false);
   });
 
-  var m = /[#&]src=([^&]+)/.exec(location.hash);
-  if (m) {
-    state.src = decodeURIComponent(m[1]); ls(LS.src, state.src);
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-  } else state.src = ls(LS.src);
-  state.pass = ls(LS.pass);
+  var m = /[#&]src=([^&]+)/.exec(location.hash), mp = /[#&]pass=([^&]+)/.exec(location.hash);
+  if (m) { state.src = decodeURIComponent(m[1]); ls(LS.src, state.src); } else state.src = ls(LS.src);
+  if (mp) { state.pass = decodeURIComponent(mp[1]); ls(LS.pass, state.pass); } else state.pass = ls(LS.pass);
+  if (m || mp) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
   load(!navigator.onLine);
 })();
 </script>
