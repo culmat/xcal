@@ -60,6 +60,8 @@
   .msg a { color: inherit; font-weight: 600; }
   form.setup { display: grid; gap: 10px; margin-top: 16px; }
   form.setup label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  form.setup .row { display: flex; gap: 10px; }
+  form.setup .row button { flex: 1; padding: 10px; }
   form.setup input, form.setup select { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
     background: var(--card); color: var(--fg); width: 100%; }
   .day { margin-top: 18px; }
@@ -181,21 +183,29 @@
       (message ? '<div class="msg err">' + esc(message) + '</div>' : '') +
       '<form class="setup" id="setup">' +
       '<label>Data URL<input name="src" type="url" required autocomplete="off" spellcheck="false" value="' + esc(state.src || '') + '" placeholder="https://…/cal.enc"></label>' +
-      '<label>Passphrase<input name="pass" type="password" required autocomplete="current-password"></label>' +
+      '<label>Passphrase<input name="pass" type="password"' + (state.pass ? ' placeholder="(unchanged)"' : ' required') + ' autocomplete="current-password"></label>' +
       '<label>Appearance<select name="theme">' + ['system', 'light', 'dark'].map(function (t) {
         return '<option value="' + t + '"' + ((ls(LS.theme) || 'system') === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></label>' +
-      '<button class="primary" type="submit">Open</button>' +
+      '<div class="row"><button class="primary" type="submit">' + (state.data ? 'Save' : 'Open') + '</button>' +
+      (state.data ? '<button type="button" id="btnCancel">Cancel</button>' : '') + '</div>' +
       (ls(LS.blob) || state.src ? '<button type="button" id="btnForget">Forget everything on this device</button>' : '') +
       '</form>');
     var form = document.getElementById('setup');
+    // The theme applies as soon as it is picked; the form only persists the rest.
+    form.theme.addEventListener('change', function () {
+      ls(LS.theme, form.theme.value === 'system' ? null : form.theme.value); applyTheme();
+    });
     form.addEventListener('submit', function (e) {
       e.preventDefault();
-      state.src = form.src.value.trim(); state.pass = form.pass.value;
+      var src = form.src.value.trim(), pass = form.pass.value || state.pass;
+      var changed = src !== state.src || pass !== state.pass;
+      state.src = src; state.pass = pass;
       ls(LS.src, state.src); ls(LS.pass, state.pass);
-      ls(LS.theme, form.theme.value === 'system' ? null : form.theme.value); applyTheme();
-      keyCache.key = null; state.data = null;
-      load();
+      if (changed) { keyCache.key = null; state.data = null; ls(LS.blob, null); idb('clear'); load({ scroll: true }); }
+      else if (state.data) render(true);
+      else load({ scroll: true });
     });
+    bind('btnCancel', function () { render(true); });
     bind('btnForget', forget);
   }
   function forget() {
@@ -451,7 +461,9 @@
     card.classList.toggle('open');
   });
   document.getElementById('btnRefresh').addEventListener('click', function () { load({ scroll: true }); });
-  document.getElementById('btnSettings').addEventListener('click', function () { showSetup(); });
+  document.getElementById('btnSettings').addEventListener('click', function () {
+    if (document.getElementById('setup') && state.data) render(true); else showSetup();
+  });
   document.querySelector('header h1').addEventListener('click', scrollToday);
   document.getElementById('btnPrev').addEventListener('click', function () { stepWeek(-1); });
   document.getElementById('btnNext').addEventListener('click', function () { stepWeek(1); });
