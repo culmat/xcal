@@ -147,7 +147,6 @@
   .owk small { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
   .orow { display: grid; grid-template-columns: 58px 90px minmax(0, 1fr); gap: 8px; align-items: center; padding: 4px 0; font-size: 13px; cursor: pointer; }
   .orow.scale { cursor: default; padding: 0; }
-  .orow.past { opacity: .55; }
   .orow .od { color: var(--muted); white-space: nowrap; }
   .orow.today .od { color: var(--accent); font-weight: 600; }
   .orow .ot { font-variant-numeric: tabular-nums; }
@@ -161,7 +160,6 @@
   .tl .b { background: var(--busy); }
   .tl .b.tent { background: repeating-linear-gradient(135deg, var(--busy) 0 3px, transparent 3px 6px); }
   .tl .g { background: var(--free); }
-  .tl .pv { left: 0; background: var(--bg); opacity: .6; }
   .tl .nw { width: 2px; margin-left: -1px; background: var(--now); }
   .slots { margin: 10px 0 4px; font-size: 14px; }
   .slots h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
@@ -536,30 +534,47 @@
         d = next;
       }
     });
-    Object.keys(days).forEach(function (k) {
-      var info = days[k], merged = [], gaps = [];
-      info.blocks.slice().sort(function (a, b) { return a.s - b.s; }).forEach(function (b) {
-        var m = merged[merged.length - 1];
-        if (m && b.s <= m.e) { if (b.e > m.e) m.e = b.e; } else merged.push({ s: b.s, e: b.e });
-      });
-      for (var i = 1; i < merged.length; i++) gaps.push({ s: merged[i - 1].e, e: merged[i].s });
-      info.merged = merged; info.gaps = gaps;
-    });
+    Object.keys(days).forEach(function (k) { spans(days[k]); });
     return days;
   }
+  // Merges a day's blocks and finds the gaps between them.
+  function spans(info) {
+    var merged = [], gaps = [];
+    info.blocks.slice().sort(function (a, b) { return a.s - b.s; }).forEach(function (b) {
+      var m = merged[merged.length - 1];
+      if (m && b.s <= m.e) { if (b.e > m.e) m.e = b.e; } else merged.push({ s: b.s, e: b.e });
+    });
+    for (var i = 1; i < merged.length; i++) gaps.push({ s: merged[i - 1].e, e: merged[i].s });
+    info.merged = merged; info.gaps = gaps; info.start = merged.length ? merged[0].s : null;
+    return info;
+  }
+  // Today counts from now on once it has started: what is over is gone, and
+  // the time until the next booking is a free slot like any other.
+  function fromNow(info, now) {
+    if (!info.merged.length || now <= info.merged[0].s) return info;
+    var rest = spans({ oof: info.oof, blocks: info.blocks.filter(function (b) { return b.e > now; }).map(function (b) {
+      return { s: b.s < now ? now : b.s, e: b.e, tent: b.tent, subj: b.subj }; }) });
+    if (rest.merged.length) {
+      if (rest.merged[0].s > now) rest.gaps.unshift({ s: now, e: rest.merged[0].s });
+      rest.start = now; rest.fromNow = true;
+    }
+    rest.over = true;
+    return rest;
+  }
+  // A planning view: it starts today, and the past stays in the list.
   function outlineHtml(events, keys, now, todayKey) {
-    var days = outlineDays(events), none = { blocks: [], merged: [], gaps: [], oof: false };
+    var days = outlineDays(events), none = { blocks: [], merged: [], gaps: [], oof: false, start: null };
     var slot = prefs.slot, nowMin = now.getHours() * 60 + now.getMinutes();
-    // The list's days, less weekends with nothing that blocks time, plus any
-    // day that a booking runs into.
+    // The list's days from today on, less weekends with nothing that blocks
+    // time, plus any day that a booking runs into.
     var set = {};
-    keys.forEach(function (k) { var wd = parseKey(k).getDay(); if (wd !== 0 && wd !== 6 || k === todayKey || days[k]) set[k] = true; });
-    Object.keys(days).forEach(function (k) { set[k] = true; });
+    keys.forEach(function (k) { var wd = parseKey(k).getDay(); if (k >= todayKey && (wd !== 0 && wd !== 6 || k === todayKey || days[k])) set[k] = true; });
+    Object.keys(days).forEach(function (k) { if (k >= todayKey) set[k] = true; });
     var weeks = [], cur = null;
     Object.keys(set).sort().forEach(function (k) {
       var d = parseKey(k), w = isoWeek(d);
       if (!cur || cur.w !== w) weeks.push(cur = { w: w, rows: [] });
-      cur.rows.push({ k: k, d: d, info: days[k] || none });
+      cur.rows.push({ k: k, d: d, info: k === todayKey ? fromNow(days[k] || none, now) : days[k] || none });
     });
 
     var html = '';
@@ -571,7 +586,7 @@
       function extend(weekdays) {
         wk.rows.forEach(function (r) {
           var m = r.info.merged, wd = r.d.getDay(); if (!m.length || weekdays && (wd === 0 || wd === 6)) return;
-          lo = Math.min(lo, minOfDay(m[0].s, r.k)); hi = Math.max(hi, minOfDay(m[m.length - 1].e, r.k));
+          lo = Math.min(lo, minOfDay(r.info.start, r.k)); hi = Math.max(hi, minOfDay(m[m.length - 1].e, r.k));
         });
       }
       extend(true); if (lo > hi) extend(false);
@@ -591,36 +606,31 @@
       }
       html += weekStart(wk.rows[0].d, true) + '<div class="orow scale"><span></span><span></span><div class="ticks">' + ticks + '</div></div>';
 
-      var list = '', upcoming = false;
+      var list = '';
       wk.rows.forEach(function (r) {
-        var info = r.info, m = info.merged, isToday = r.k === todayKey, past = r.k < todayKey;
+        var info = r.info, m = info.merged, isToday = r.k === todayKey;
         var when = info.oof ? '<span class="ot oof">out of office</span>'
-          : m.length ? '<span class="ot">' + esc(fmtTime(m[0].s)) + '–' + esc(fmtTime(m[m.length - 1].e)) + '</span>'
-          : '<span class="ot none">—</span>';
+          : m.length ? '<span class="ot">' + esc(info.fromNow ? 'now' : fmtTime(info.start)) + '–' + esc(fmtTime(m[m.length - 1].e)) + '</span>'
+          : '<span class="ot none">' + (info.over ? 'done' : '—') + '</span>';
         var bar = '';
         info.gaps.forEach(function (g) { if (g.e - g.s >= slot * 6e4) bar += seg('g', g.s, g.e, r.k, fmtTime(g.s) + '–' + fmtTime(g.e) + ' free'); });
         // Tentative first, so a firm booking on top of it shows solid.
         info.blocks.slice().sort(function (a, b) { return b.tent - a.tent; }).forEach(function (b) {
           bar += seg('b' + (b.tent ? ' tent' : ''), b.s, b.e, r.k, fmtTime(b.s) + '–' + fmtTime(b.e) + ' ' + (b.subj || ''));
         });
-        if (isToday && nowMin > lo) {
-          bar += '<i class="pv" style="width:' + pct(nowMin) + '"></i>';
-          if (nowMin < hi) bar += '<i class="nw" style="left:' + pct(nowMin) + '"></i>';
-        }
-        html += '<div class="orow' + (isToday ? ' today' : '') + (past ? ' past' : '') + '" data-day="' + r.k + '" data-goto="' + r.k + '"' + (isToday ? ' id="today"' : '') + '>' +
+        if (isToday && nowMin >= lo && nowMin < hi) bar += '<i class="nw" style="left:' + pct(nowMin) + '"></i>';
+        html += '<div class="orow' + (isToday ? ' today' : '') + '" data-day="' + r.k + '" data-goto="' + r.k + '"' + (isToday ? ' id="today"' : '') + '>' +
           '<span class="od">' + esc(fmtDayShort(r.d)) + '</span>' + when +
           '<div class="tl" style="background-size:' + (100 / hours).toFixed(4) + '% 100%">' + bar + '</div></div>';
 
-        if (past) return;
-        upcoming = true;
         if (info.oof) return;
-        if (!m.length) { list += slotHtml(r, '<span class="none">no bookings</span>', ''); return; }
+        if (!info.blocks.length && !info.over) { list += slotHtml(r, '<span class="none">no bookings</span>', ''); return; }
         info.gaps.forEach(function (g) {
-          var s = isToday && g.s < now ? now : g.s, len = (g.e - s) / 6e4;
-          if (len >= slot) list += slotHtml(r, esc(fmtTime(s)) + '–' + esc(fmtTime(g.e)), fmtDur(len));
+          var len = (g.e - g.s) / 6e4;
+          if (len >= slot) list += slotHtml(r, esc(fmtTime(g.s)) + '–' + esc(fmtTime(g.e)), fmtDur(len));
         });
       });
-      if (upcoming) html += '<div class="slots"><h3>Free &#x2265; ' + slot + ' min</h3>' + (list || '<div class="none">No gap that long.</div>') + '</div>';
+      html += '<div class="slots"><h3>Free &#x2265; ' + slot + ' min</h3>' + (list || '<div class="none">No gap that long.</div>') + '</div>';
       html += '</section>';
     });
     return html;
@@ -664,10 +674,11 @@
   }
   // A day missing from the list (a free weekend) falls back to the day before
   // it in the same week, else the next day shown. The outline shows whole
-  // weeks, so there it is the day's week.
+  // weeks from this one on, so there it is the day's week, or this week for a
+  // day already past.
   function scrollToDay(key) {
     if (prefs.view === 'outline') {
-      var wk = document.getElementById('w-' + isoWeek(parseKey(key)));
+      var wk = document.getElementById('w-' + isoWeek(parseKey(key))) || main.querySelector('.week');
       if (wk) return scrollToEl(wk);
     }
     var days = main.querySelectorAll('.day[data-day]'), before = null, after = null;
