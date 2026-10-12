@@ -134,6 +134,9 @@
   .details a { color: var(--accent); }
   .join { display: inline-block; margin: 4px 0 8px; padding: 8px 14px; border-radius: 8px;
     background: var(--accent); color: var(--accent-fg) !important; text-decoration: none; font-weight: 600; }
+  .ev.edge { border-color: var(--free); box-shadow: 0 0 0 1px var(--free); }
+  .gapmark { margin: 2px 0 8px; padding: 6px 12px; border: 2px dashed var(--free); border-radius: 10px;
+    font-size: 13px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
   .nowline { height: 2px; background: var(--now); margin: 2px 0 8px; position: relative; }
   .nowline::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--now); }
   .foot { margin-top: 30px; font-size: 12px; color: var(--dim); text-align: center; }
@@ -490,13 +493,15 @@
       html += '<section class="day' + (isToday ? ' today' : '') + (wk ? ' weekend' : '') + '" data-day="' + k + '"' + (isToday ? ' id="today"' : '') + '>' +
               '<h2>' + esc(isToday ? 'Today · ' + fmtDayLong(d) : fmtDay(d)) + '</h2>';
       if (!list.length) html += '<div class="empty">Nothing scheduled</div>';
-      var nowDrawn = !isToday;
+      var nowDrawn = !isToday, mk = state.mark && state.mark.day === k ? state.mark : null, edges = mk ? markEdges(list, mk) : {};
       list.forEach(function (x) {
         var ev = x.ev;
         if (!nowDrawn && x.kind === 'timed' && ev._s > now) { html += '<div class="nowline"></div>'; nowDrawn = true; }
-        html += eventHtml(ev, x.kind, k, now);
+        if (mk && x.kind === 'timed' && ev._s >= mk.s) { html += markHtml(mk); mk = null; }
+        html += eventHtml(ev, x.kind, k, now, ev === edges.before || ev === edges.after);
       });
       if (!nowDrawn) html += '<div class="nowline"></div>';
+      if (mk) html += markHtml(mk);
       html += '</section>';
     });
     if (curWeek) html += '</section>';
@@ -630,7 +635,7 @@
         if (!info.blocks.length && !info.over) { list += slotHtml(r, '<span class="none">no bookings</span>', ''); return; }
         info.gaps.forEach(function (g) {
           var len = (g.e - g.s) / 6e4;
-          if (len >= slot) list += slotHtml(r, esc(fmtTime(g.s)) + '–' + esc(fmtTime(g.e)), fmtDur(len));
+          if (len >= slot) list += slotHtml(r, esc(fmtTime(g.s)) + '–' + esc(fmtTime(g.e)), fmtDur(len), g);
         });
       });
       html += '<div class="slots"><h3>Free &#x2265; ' + slot + ' min</h3>' + (list || '<div class="none">No gap that long.</div>') + '</div>';
@@ -638,9 +643,40 @@
     });
     return html;
   }
-  function slotHtml(r, when, len) {
-    return '<div class="slot" data-goto="' + r.k + '"><span class="od">' + esc(fmtDayShort(r.d)) + '</span><span>' + when + '</span>' +
-      '<span class="len">' + esc(len) + '</span></div>';
+  function slotHtml(r, when, len, gap) {
+    return '<div class="slot" data-goto="' + r.k + '"' + (gap ? ' data-s="' + gap.s.getTime() + '" data-e="' + gap.e.getTime() + '"' : '') + '>' +
+      '<span class="od">' + esc(fmtDayShort(r.d)) + '</span><span>' + when + '</span><span class="len">' + esc(len) + '</span></div>';
+  }
+
+  // ---------------------------------------------------------------- slot marker
+  // A slot picked in the outline is marked in the list between the bookings
+  // around it, so where they are tells whether there is time to get there.
+  // It stays through re-renders and goes when the user navigates.
+  function markEdges(list, mk) {
+    var before = null, after = null;
+    list.forEach(function (x) {
+      var ev = x.ev; if (x.kind !== 'timed' || !isBusy(ev)) return;
+      if (ev._e <= mk.s && (!before || ev._e > before._e)) before = ev;
+      if (ev._s >= mk.e && (!after || ev._s < after._s)) after = ev;
+    });
+    return { before: before, after: after };
+  }
+  function markHtml(mk) {
+    return '<div class="gapmark" id="gapmark">Free ' + esc(fmtTime(new Date(mk.s))) + '–' + esc(fmtTime(new Date(mk.e))) +
+      ' · ' + esc(fmtDur((mk.e - mk.s) / 6e4)) + '</div>';
+  }
+  function showMark() {
+    var el = main.querySelector('.ev.edge') || document.getElementById('gapmark'); if (!el) return;
+    // Below the day's sticky heading, with the booking before the slot on top.
+    window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.pageYOffset - HEAD - 40));
+    updateWeekbar();
+  }
+  function clearMark() {
+    if (!state.mark) return;
+    state.mark = null;
+    var g = document.getElementById('gapmark'); if (g) g.parentNode.removeChild(g);
+    var edges = main.querySelectorAll('.ev.edge');
+    for (var i = 0; i < edges.length; i++) edges[i].classList.remove('edge');
   }
   function syncViewBars() {
     var outline = prefs.view === 'outline';
@@ -759,9 +795,9 @@
     calpop.innerHTML = html;
   }
 
-  function eventHtml(ev, kind, dayK, now) {
+  function eventHtml(ev, kind, dayK, now, edge) {
     var past = ev._e <= now;
-    var cls = 'ev' + (past ? ' past' : '') + (ev.responseStatus === 'declined' || ev.isCancelled ? ' declined' : '') + (state.open[ev._id] ? ' open' : '');
+    var cls = 'ev' + (past ? ' past' : '') + (edge ? ' edge' : '') + (ev.responseStatus === 'declined' || ev.isCancelled ? ' declined' : '') + (state.open[ev._id] ? ' open' : '');
     var time;
     if (kind === 'allday') {
       var days = Math.round((ev._e - ev._s) / 864e5);
@@ -802,7 +838,14 @@
   // ---------------------------------------------------------------- boot
   main.addEventListener('click', function (e) {
     var go = e.target.closest ? e.target.closest('[data-goto]') : null;
-    if (go) { userNav(); setView('list', go.getAttribute('data-goto')); return; }
+    if (go) {
+      var s = go.getAttribute('data-s');
+      userNav(); clearMark();
+      if (s) state.mark = { day: go.getAttribute('data-goto'), s: Number(s), e: Number(go.getAttribute('data-e')) };
+      setView('list', go.getAttribute('data-goto'));
+      if (s) showMark();
+      return;
+    }
     var card = e.target.closest ? e.target.closest('.ev') : null;
     if (!card || e.target.tagName === 'A') return;
     var id = card.getAttribute('data-id');
@@ -817,14 +860,14 @@
   // when it started after that.
   var navAt = 0;
   function userNav() { navAt = Date.now(); }
-  function navTo(fn) { return function () { userNav(); closeCal(); fn(); }; }
+  function navTo(fn) { return function () { userNav(); closeCal(); clearMark(); fn(); }; }
   document.querySelector('header h1').addEventListener('click', navTo(scrollToday));
   btnPrev.addEventListener('click', navTo(function () { stepWeek(-1); }));
   btnNext.addEventListener('click', navTo(function () { stepWeek(1); }));
   document.getElementById('btnNow').addEventListener('click', navTo(scrollToday));
   btnView.addEventListener('click', function () {
     if (!state.data) return;
-    userNav(); setView(prefs.view === 'outline' ? 'list' : 'outline');
+    userNav(); clearMark(); setView(prefs.view === 'outline' ? 'list' : 'outline');
   });
   outlinebar.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('button') : null;
