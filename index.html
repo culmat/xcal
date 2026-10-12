@@ -69,12 +69,36 @@
   .weekbar[hidden] { display: none; }
   .weekbar { background: var(--bg); border-bottom: 1px solid var(--line);
     display: flex; align-items: center; gap: 6px; padding: 6px 16px; padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
-  .weekbar .label { flex: 1; text-align: center; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .weekbar button { min-width: 44px; min-height: 40px; }
+  .weekbar button:disabled { opacity: .35; cursor: default; }
+  .weekbar .label { flex: 1; min-width: 0; border: 0; background: none; padding: 2px 4px;
+    text-align: center; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .weekbar .label .caret { color: var(--muted); font-weight: 400; }
   .weekbar .label small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
-  .weekbar button { min-width: 40px; }
   .weekbar button.now { color: var(--accent); border-color: var(--accent); }
+  /* Keeps Today away from the next-week button, which it used to steal taps from. */
+  .weekbar .sep { width: 1px; height: 24px; background: var(--line); margin: 0 10px; flex: none; }
+  .calpop[hidden] { display: none; }
+  .calpop { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: min(320px, calc(100vw - 32px));
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+  .calhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .calhead b { font-size: 15px; }
+  .calhead button { min-width: 44px; }
+  .calhead button:disabled { opacity: .35; cursor: default; }
+  .calgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; text-align: center; }
+  .calgrid .wd { font-size: 11px; color: var(--muted); padding: 4px 0; }
+  .calgrid button { position: relative; padding: 9px 0; border: 0; background: none; border-radius: 8px; font-size: 14px; }
+  .calgrid button.inweek { background: var(--today); }
+  .calgrid button.wkend { color: var(--muted); }
+  .calgrid button.today { box-shadow: inset 0 0 0 2px var(--accent); font-weight: 600; }
+  .calgrid button.busy::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px;
+    border-radius: 50%; background: var(--accent); }
+  .calgrid button:disabled { color: var(--dim); opacity: .5; cursor: default; }
+  .calpop .calToday { width: 100%; margin-top: 8px; padding: 8px; }
   .week { border-top: 2px solid var(--line); margin-top: 22px; padding-top: 2px; }
   .week:first-of-type { border-top: 0; margin-top: 0; }
+  /* The last week must be able to scroll up under the bar, or next-week cannot reach it. */
+  .week:last-of-type { min-height: calc(100vh - var(--top-h, 100px) - 8px); min-height: calc(100dvh - var(--top-h, 100px) - 8px); }
   .day h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
     margin: 0 0 6px; position: sticky; top: var(--top-h, 100px); background: var(--bg); padding: 6px 0; z-index: 1; }
   .day.today h2 { color: var(--accent); }
@@ -120,10 +144,12 @@
 </header>
 <div class="weekbar" id="weekbar" hidden>
   <button id="btnPrev" aria-label="Previous week">&#x2039;</button>
-  <div class="label" id="weekLabel"></div>
+  <button id="weekLabel" class="label" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="calpop"></button>
   <button id="btnNext" aria-label="Next week">&#x203a;</button>
-  <button id="btnNow" class="now">Now</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button id="btnNow" class="now">Today</button>
 </div>
+<div id="calpop" class="calpop" role="dialog" aria-label="Go to date" hidden></div>
 </div>
 <main id="main"></main>
 <script>
@@ -133,6 +159,8 @@
   var STALE_HOURS = 3, FETCH_TIMEOUT = 12000;
   var main = document.getElementById('main');
   var weekbar = document.getElementById('weekbar'), weekLabel = document.getElementById('weekLabel');
+  var btnPrev = document.getElementById('btnPrev'), btnNext = document.getElementById('btnNext');
+  var calpop = document.getElementById('calpop'), calMonth = null;
   var statusEl = document.getElementById('status');
   var state = { src: null, pass: null, data: null, offline: false, fetchErr: null, fetching: false, open: {} };
   var keyCache = { salt: null, iter: 0, key: null };
@@ -183,7 +211,7 @@
   function bind(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener('click', fn); }
 
   function showSetup(message) {
-    setStatus(''); weekbar.hidden = true; layoutTop();
+    setStatus(''); closeCal(); weekbar.hidden = true; layoutTop();
     show(
       (message ? '<div class="msg err">' + esc(message) + '</div>' : '') +
       '<form class="setup" id="setup">' +
@@ -287,6 +315,7 @@
   function load(opts) {
     opts = opts || {};
     if (!state.src || !state.pass) return showSetup();
+    var started = Date.now();
     var cached = ls(LS.blob);
     var first = Promise.resolve();
     if (!state.data && cached) {
@@ -308,7 +337,9 @@
           ls(LS.blob, text);
           var firstRender = !state.data;
           state.data = data; state.offline = false; state.fetchErr = null;
-          render(firstRender || !!opts.scroll);
+          // A fetch that lands after the user started moving around must not
+          // yank them back to today.
+          render(firstRender || (!!opts.scroll && navAt < started));
         });
       }).catch(function (err) {
         if (err.message === 'WRONG_PASS') return fail(err);
@@ -350,6 +381,8 @@
     // that from the events themselves.
     var from = data.from ? dayKey(new Date(data.from)) : minKey, to = data.to ? dayKey(new Date(data.to)) : maxKey;
     if (!from || from > todayKey) from = todayKey; if (!to || to < todayKey) to = todayKey;
+    var busy = {}; Object.keys(byDay).forEach(function (k) { busy[k] = true; });
+    state.cal = { from: from, to: to, busy: busy };
     for (var d0 = parseKey(from); dayKey(d0) <= to; d0.setDate(d0.getDate() + 1)) {
       var k0 = dayKey(d0), wd = d0.getDay();
       if (!byDay[k0] && (wd !== 0 && wd !== 6 || k0 === todayKey)) byDay[k0] = [];
@@ -379,7 +412,7 @@
       var list = byDay[k].sort(function (a, b) {
         if (a.kind !== b.kind) return a.kind === 'allday' ? -1 : 1;
         return a.ev._s - b.ev._s; });
-      html += '<section class="day' + (isToday ? ' today' : '') + (wk ? ' weekend' : '') + '"' + (isToday ? ' id="today"' : '') + '>' +
+      html += '<section class="day' + (isToday ? ' today' : '') + (wk ? ' weekend' : '') + '" data-day="' + k + '"' + (isToday ? ' id="today"' : '') + '>' +
               '<h2>' + esc(isToday ? 'Today · ' + fmtDayLong(d) : fmtDay(d)) + '</h2>';
       if (!list.length) html += '<div class="empty">Nothing scheduled</div>';
       var nowDrawn = !isToday;
@@ -393,33 +426,104 @@
     });
     if (curWeek) html += '</section>';
     html += '<p class="foot">' + events.length + ' events · generated ' + (gen ? esc(gen.toLocaleString()) : '?') + '</p>';
+    // A re-render keeps the day at the top of the view where it was, so events
+    // added or removed above it do not shift what the user is reading.
+    var anchor = scrollToToday ? null : topDay(), anchorTop = anchor && anchor.getBoundingClientRect().top;
+    anchor = anchor && anchor.getAttribute('data-day');
     show(html);
     weekbar.hidden = false; layoutTop();
     bind('lnkRetry', function (e) { e.preventDefault(); load({ scroll: false }); });
-    if (scrollToToday) scrollToday(); else updateWeekbar();
+    if (scrollToToday) { closeCal(); scrollToday(); updateWeekbar(); return; }
+    var again = anchor && main.querySelector('.day[data-day="' + anchor + '"]');
+    if (again) window.scrollBy(0, again.getBoundingClientRect().top - anchorTop);
+    updateWeekbar();
   }
   var HEAD = 100; // header + week bar, measured
+  var GAP = 4;    // room left above a section scrolled to the top
   var topEl = document.getElementById('top');
   function layoutTop() {
     var h = topEl.offsetHeight; if (!h) return;
     HEAD = h; document.documentElement.style.setProperty('--top-h', h + 'px');
   }
-  function scrollToEl(el) { if (el) window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.pageYOffset - HEAD - 4)); }
+  function isWeek(el) { return !!el && el.classList.contains('week'); }
+  function scrollToEl(el) { if (el) window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.pageYOffset - HEAD - GAP)); }
   function scrollToday() { scrollToEl(document.getElementById('today')); }
+  // A day missing from the list (a free weekend) falls back to the day before
+  // it in the same week, else the next day shown.
+  function scrollToDay(key) {
+    var days = main.querySelectorAll('.day[data-day]'), before = null, after = null;
+    for (var i = 0; i < days.length; i++) {
+      if (days[i].getAttribute('data-day') >= key) { after = days[i]; break; }
+      before = days[i];
+    }
+    if (after && after.getAttribute('data-day') === key) return scrollToEl(after);
+    var sameWeek = before && isoWeek(parseKey(before.getAttribute('data-day'))) === isoWeek(parseKey(key));
+    scrollToEl(sameWeek || !after ? before : after);
+  }
+  function topDay() {
+    var days = main.querySelectorAll('.day[data-day]');
+    for (var i = 0; i < days.length; i++) if (days[i].getBoundingClientRect().bottom > HEAD) return days[i];
+    return null;
+  }
+  // The probe sits just below where scrollToEl puts a section, so a week
+  // counts as current as soon as it has been scrolled into place.
   function currentWeek() {
-    var secs = main.querySelectorAll('.week'), y = HEAD + 1, best = secs[0];
+    var secs = main.querySelectorAll('.week'), y = HEAD + GAP + 2, best = secs[0];
     for (var i = 0; i < secs.length; i++) { if (secs[i].getBoundingClientRect().top <= y) best = secs[i]; else break; }
     return best;
   }
+  function atWeekTop(w) { return w.getBoundingClientRect().top >= HEAD + GAP - 2; }
   function updateWeekbar() {
     var w = currentWeek(); if (!w) return;
-    weekLabel.innerHTML = esc(w.getAttribute('data-label')) + '<small>' + esc(w.getAttribute('data-range')) + '</small>';
+    weekLabel.innerHTML = esc(w.getAttribute('data-label')) + '<span class="caret" aria-hidden="true"> &#x25BE;</span>' +
+      '<small>' + esc(w.getAttribute('data-range')) + '</small>';
+    btnPrev.disabled = !isWeek(w.previousElementSibling) && atWeekTop(w);
+    btnNext.disabled = !isWeek(w.nextElementSibling);
   }
   function stepWeek(dir) {
     var w = currentWeek(); if (!w) return;
-    var target = dir > 0 ? w.nextElementSibling : (w.getBoundingClientRect().top < HEAD - 2 ? w : w.previousElementSibling);
-    if (dir < 0 && target === w) { scrollToEl(w); return; }
-    if (target && target.classList.contains('week')) scrollToEl(target);
+    var target = dir > 0 ? w.nextElementSibling : (atWeekTop(w) ? w.previousElementSibling : w);
+    if (isWeek(target)) scrollToEl(target);
+  }
+
+  // ---------------------------------------------------------------- month popover
+  function openCal() {
+    var d = topDay(), base = d ? parseKey(d.getAttribute('data-day')) : new Date();
+    calMonth = new Date(base.getFullYear(), base.getMonth(), 1);
+    renderCal(); calpop.hidden = false; weekLabel.setAttribute('aria-expanded', 'true');
+  }
+  function closeCal() {
+    if (calpop.hidden) return;
+    calpop.hidden = true; weekLabel.setAttribute('aria-expanded', 'false');
+  }
+  function renderCal() {
+    var c = state.cal; if (!c || !calMonth) return;
+    var mo = calMonth.getMonth(), month = dayKey(calMonth).slice(0, 7);
+    var d = new Date(calMonth); d.setDate(1 - ((calMonth.getDay() + 6) % 7)); // Monday on or before the 1st
+    var todayKey = dayKey(new Date()), w = currentWeek(), shown = w ? w.id : '';
+    var html = '<div class="calhead">' +
+      '<button type="button" data-month="-1" aria-label="Previous month"' + (month <= c.from.slice(0, 7) ? ' disabled' : '') + '>&#x2039;</button>' +
+      '<b>' + esc(calMonth.toLocaleDateString([], { month: 'long', year: 'numeric' })) + '</b>' +
+      '<button type="button" data-month="1" aria-label="Next month"' + (month >= c.to.slice(0, 7) ? ' disabled' : '') + '>&#x203a;</button>' +
+      '</div><div class="calgrid">';
+    for (var i = 0; i < 7; i++) {
+      var wd = new Date(d); wd.setDate(d.getDate() + i);
+      html += '<span class="wd">' + esc(wd.toLocaleDateString([], { weekday: 'narrow' })) + '</span>';
+    }
+    do {
+      for (i = 0; i < 7; i++, d.setDate(d.getDate() + 1)) {
+        if (d.getMonth() !== mo) { html += '<span></span>'; continue; }
+        var k = dayKey(d), cls = [];
+        if (k === todayKey) cls.push('today');
+        if (c.busy[k]) cls.push('busy');
+        if ('w-' + isoWeek(d) === shown) cls.push('inweek');
+        if (d.getDay() === 0 || d.getDay() === 6) cls.push('wkend');
+        html += '<button type="button" data-day="' + k + '" class="' + cls.join(' ') + '"' +
+          (k < c.from || k > c.to ? ' disabled' : '') + ' aria-label="' + esc(fmtDayLong(d)) + '">' + d.getDate() + '</button>';
+      }
+    } while (d.getMonth() === mo);
+    html += '</div><button type="button" class="primary calToday">Today</button>';
+    calpop.innerHTML = html;
   }
 
   function eventHtml(ev, kind, dayK, now) {
@@ -474,10 +578,33 @@
   document.getElementById('btnSettings').addEventListener('click', function () {
     if (document.getElementById('setup') && state.data) render(true); else showSetup();
   });
-  document.querySelector('header h1').addEventListener('click', scrollToday);
-  document.getElementById('btnPrev').addEventListener('click', function () { stepWeek(-1); });
-  document.getElementById('btnNext').addEventListener('click', function () { stepWeek(1); });
-  document.getElementById('btnNow').addEventListener('click', scrollToday);
+  // When the user last moved around; a background fetch only jumps to today
+  // when it started after that.
+  var navAt = 0;
+  function userNav() { navAt = Date.now(); }
+  function navTo(fn) { return function () { userNav(); closeCal(); fn(); }; }
+  document.querySelector('header h1').addEventListener('click', navTo(scrollToday));
+  btnPrev.addEventListener('click', navTo(function () { stepWeek(-1); }));
+  btnNext.addEventListener('click', navTo(function () { stepWeek(1); }));
+  document.getElementById('btnNow').addEventListener('click', navTo(scrollToday));
+  window.addEventListener('wheel', userNav, { passive: true });
+  window.addEventListener('touchmove', userNav, { passive: true });
+  weekLabel.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (calpop.hidden) openCal(); else closeCal();
+  });
+  // Stop clicks here from reaching the document's outside-click handler: a
+  // month change replaces the clicked button, which then looks like an outside click.
+  calpop.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b || b.disabled) return;
+    if (b.hasAttribute('data-month')) { calMonth.setMonth(calMonth.getMonth() + Number(b.getAttribute('data-month'))); renderCal(); return; }
+    var key = b.getAttribute('data-day');
+    navTo(key ? function () { scrollToDay(key); } : scrollToday)();
+  });
+  document.addEventListener('click', closeCal);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeCal(); });
   var ticking = false;
   window.addEventListener('scroll', function () {
     if (ticking) return; ticking = true;
