@@ -23,6 +23,7 @@
     --bg: #f6f7f9; --card: #ffffff; --fg: #1b1f24; --muted: #6b7280; --line: #e3e6ea;
     --accent: #2563eb; --accent-fg: #ffffff; --warn: #b45309; --warn-bg: #fef3c7;
     --err: #b91c1c; --err-bg: #fee2e2; --dim: #9ca3af; --now: #dc2626; --today: #eff6ff;
+    --busy: #94a3b8; --free: #86efac;
   }
   :root[data-theme="dark"], :root[data-theme="dark"] body { color-scheme: dark; }
   :root[data-theme="light"], :root[data-theme="light"] body { color-scheme: light; }
@@ -31,12 +32,14 @@
       --bg: #0f1216; --card: #171b21; --fg: #e6e8eb; --muted: #9aa3ad; --line: #262c34;
       --accent: #60a5fa; --accent-fg: #0b1220; --warn: #fbbf24; --warn-bg: #3b2f0b;
       --err: #f87171; --err-bg: #3b1111; --dim: #5b6570; --now: #f87171; --today: #16202e;
+      --busy: #64748b; --free: #166534;
     }
   }
   :root[data-theme="dark"] {
     --bg: #0f1216; --card: #171b21; --fg: #e6e8eb; --muted: #9aa3ad; --line: #262c34;
     --accent: #60a5fa; --accent-fg: #0b1220; --warn: #fbbf24; --warn-bg: #3b2f0b;
     --err: #f87171; --err-bg: #3b1111; --dim: #5b6570; --now: #f87171; --today: #16202e;
+    --busy: #64748b; --free: #166534;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--fg); overflow-x: hidden;
@@ -45,7 +48,8 @@
   header { background: var(--bg); border-bottom: 1px solid var(--line);
     padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top)); display: flex; align-items: center; gap: 10px; }
   header h1 { font-size: 18px; margin: 0; flex: 1; letter-spacing: .02em; cursor: pointer; }
-  header .status { font-size: 12px; color: var(--muted); }
+  header .status { font-size: 12px; color: var(--muted); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header button[hidden] { display: none; }
   header .status.stale { color: var(--warn); }
   button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--fg);
     border-radius: 8px; padding: 6px 10px; cursor: pointer; }
@@ -131,6 +135,41 @@
   .nowline::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--now); }
   .foot { margin-top: 30px; font-size: 12px; color: var(--dim); text-align: center; }
   .spinner { color: var(--muted); font-size: 14px; padding: 20px 0; text-align: center; }
+  /* Outline view: one bar per day from the first booking to the last, gaps in between. */
+  .obar[hidden] { display: none; }
+  .obar { background: var(--bg); border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 6px 16px; padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); font-size: 13px; }
+  .obar .lbl { color: var(--muted); }
+  .obar .sp { flex: 1; }
+  .obar button { padding: 4px 8px; min-width: 36px; }
+  .obar button.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .owk { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 12px 0 4px; }
+  .owk small { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+  .orow { display: grid; grid-template-columns: 58px 90px minmax(0, 1fr); gap: 8px; align-items: center; padding: 4px 0; font-size: 13px; cursor: pointer; }
+  .orow.scale { cursor: default; padding: 0; }
+  .orow.past { opacity: .55; }
+  .orow .od { color: var(--muted); white-space: nowrap; }
+  .orow.today .od { color: var(--accent); font-weight: 600; }
+  .orow .ot { font-variant-numeric: tabular-nums; }
+  .orow .ot.none { color: var(--dim); }
+  .orow .ot.oof { color: var(--warn); }
+  .ticks { position: relative; height: 14px; font-size: 11px; color: var(--muted); }
+  .ticks span { position: absolute; top: 0; transform: translateX(-50%); }
+  .tl { position: relative; height: 22px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
+    background-color: var(--card); background-image: linear-gradient(to right, var(--line) 1px, transparent 1px); }
+  .tl i { position: absolute; top: 0; bottom: 0; }
+  .tl .b { background: var(--busy); }
+  .tl .b.tent { background: repeating-linear-gradient(135deg, var(--busy) 0 3px, transparent 3px 6px); }
+  .tl .g { background: var(--free); }
+  .tl .pv { left: 0; background: var(--bg); opacity: .6; }
+  .tl .nw { width: 2px; margin-left: -1px; background: var(--now); }
+  .slots { margin: 10px 0 4px; font-size: 14px; }
+  .slots h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
+  .slot { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 8px; padding: 6px 10px; margin-bottom: 4px; cursor: pointer;
+    background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--free); border-radius: 8px; font-variant-numeric: tabular-nums; }
+  .slot .od { color: var(--muted); white-space: nowrap; }
+  .slot .len { color: var(--muted); }
+  .slots .none { color: var(--dim); }
 </style>
 </head>
 <body>
@@ -139,6 +178,7 @@
   <h1>xcal</h1>
   <span id="status" class="status"></span>
   <button id="btnRefresh" class="icon" title="Refresh" aria-label="Refresh">&#x21bb;</button>
+  <button id="btnView" class="icon" hidden></button>
   <button id="btnFull" class="icon" title="Fullscreen" aria-label="Fullscreen">&#x26F6;</button>
   <button id="btnSettings" class="icon" title="Settings" aria-label="Settings">&#x2699;</button>
 </header>
@@ -149,20 +189,33 @@
   <span class="sep" aria-hidden="true"></span>
   <button id="btnNow" class="now">Today</button>
 </div>
+<div class="obar" id="outlinebar" hidden>
+  <span class="lbl">Free &#x2265;</span>
+  <button type="button" data-slot="30">30</button>
+  <button type="button" data-slot="60">60</button>
+  <button type="button" data-slot="90">90</button>
+  <button type="button" data-slot="120">120</button>
+  <span class="sp"></span>
+  <button type="button" id="btnTent" title="Whether tentative meetings block a slot"></button>
+</div>
 <div id="calpop" class="calpop" role="dialog" aria-label="Go to date" hidden></div>
 </div>
 <main id="main"></main>
 <script>
 (function () {
   'use strict';
-  var LS = { src: 'xcal.src', pass: 'xcal.pass', blob: 'xcal.blob', fetched: 'xcal.fetched', theme: 'xcal.theme' };
+  var LS = { src: 'xcal.src', pass: 'xcal.pass', blob: 'xcal.blob', fetched: 'xcal.fetched', theme: 'xcal.theme',
+             view: 'xcal.view', slot: 'xcal.slot', tent: 'xcal.tent' };
   var STALE_HOURS = 3, FETCH_TIMEOUT = 12000;
   var main = document.getElementById('main');
   var weekbar = document.getElementById('weekbar'), weekLabel = document.getElementById('weekLabel');
   var btnPrev = document.getElementById('btnPrev'), btnNext = document.getElementById('btnNext');
   var calpop = document.getElementById('calpop'), calMonth = null;
   var statusEl = document.getElementById('status');
+  var btnView = document.getElementById('btnView'), outlinebar = document.getElementById('outlinebar');
   var state = { src: null, pass: null, data: null, offline: false, fetchErr: null, fetching: false, open: {} };
+  // View choices are preferences, like the theme: they survive "forget".
+  var prefs = { view: ls(LS.view) === 'outline' ? 'outline' : 'list', slot: Number(ls(LS.slot)) || 90, tentFree: ls(LS.tent) === 'free' };
   var keyCache = { salt: null, iter: 0, key: null };
 
   function ls(k, v) {
@@ -180,6 +233,7 @@
   function dayKey(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   function fmtTime(d) { return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
   function fmtDay(d) { return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }); }
+  function fmtDayShort(d) { return d.toLocaleDateString([], { weekday: 'short', day: 'numeric' }); }
   function fmtDayLong(d) { return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }); }
   function isoWeek(d) {
     var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -211,7 +265,7 @@
   function bind(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener('click', fn); }
 
   function showSetup(message) {
-    setStatus(''); closeCal(); weekbar.hidden = true; layoutTop();
+    setStatus(''); closeCal(); weekbar.hidden = outlinebar.hidden = btnView.hidden = true; layoutTop();
     show(
       (message ? '<div class="msg err">' + esc(message) + '</div>' : '') +
       '<form class="setup" id="setup">' +
@@ -398,15 +452,35 @@
     }
     if (maxKey && todayKey > maxKey) html += '<div class="msg warn">This data ends before today.</div>';
 
-    var weeks = [], curWeek = null;
+    html += prefs.view === 'outline' ? outlineHtml(events, keys, now, todayKey) : listHtml(keys, byDay, now, todayKey);
+    html += '<p class="foot">' + events.length + ' events · generated ' + (gen ? esc(gen.toLocaleString()) : '?') + '</p>';
+    // A re-render keeps the day at the top of the view where it was, so events
+    // added or removed above it do not shift what the user is reading.
+    var anchor = scrollToToday ? null : topDay(), anchorTop = anchor && anchor.getBoundingClientRect().top;
+    anchor = anchor && anchor.getAttribute('data-day');
+    show(html);
+    weekbar.hidden = false; syncViewBars(); layoutTop();
+    bind('lnkRetry', function (e) { e.preventDefault(); load({ scroll: false }); });
+    if (scrollToToday) { closeCal(); scrollToday(); updateWeekbar(); return; }
+    var again = anchor && main.querySelector('[data-day="' + anchor + '"]');
+    if (again) window.scrollBy(0, again.getBoundingClientRect().top - anchorTop);
+    updateWeekbar();
+  }
+  // Both views wrap each week in the same section, which is what the week bar
+  // and the month popover navigate by.
+  function weekStart(d, heading) {
+    var w = isoWeek(d), label = 'Week ' + w.slice(-2);
+    var mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return '<section class="week" id="w-' + w + '" data-label="' + esc(label) + '" data-range="' + esc(fmtRange(mon, sun)) + '">' +
+      (heading ? '<h2 class="owk">' + esc(label) + '<small>' + esc(fmtRange(mon, sun)) + '</small></h2>' : '');
+  }
+  function listHtml(keys, byDay, now, todayKey) {
+    var html = '', curWeek = null;
     keys.forEach(function (k) {
       var d = parseKey(k), w = isoWeek(d);
       if (w !== curWeek) {
         if (curWeek) html += '</section>';
-        curWeek = w;
-        var mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-        weeks.push({ id: 'w-' + w, label: 'Week ' + w.slice(-2), range: fmtRange(mon, sun) });
-        html += '<section class="week" id="w-' + w + '" data-label="' + esc('Week ' + w.slice(-2)) + '" data-range="' + esc(fmtRange(mon, sun)) + '">';
+        curWeek = w; html += weekStart(d);
       }
       var isToday = k === todayKey, wk = d.getDay() === 0 || d.getDay() === 6;
       var list = byDay[k].sort(function (a, b) {
@@ -425,17 +499,154 @@
       html += '</section>';
     });
     if (curWeek) html += '</section>';
-    html += '<p class="foot">' + events.length + ' events · generated ' + (gen ? esc(gen.toLocaleString()) : '?') + '</p>';
-    // A re-render keeps the day at the top of the view where it was, so events
-    // added or removed above it do not shift what the user is reading.
-    var anchor = scrollToToday ? null : topDay(), anchorTop = anchor && anchor.getBoundingClientRect().top;
-    anchor = anchor && anchor.getAttribute('data-day');
-    show(html);
-    weekbar.hidden = false; layoutTop();
-    bind('lnkRetry', function (e) { e.preventDefault(); load({ scroll: false }); });
-    if (scrollToToday) { closeCal(); scrollToday(); updateWeekbar(); return; }
-    var again = anchor && main.querySelector('.day[data-day="' + anchor + '"]');
-    if (again) window.scrollBy(0, again.getBoundingClientRect().top - anchorTop);
+    return html;
+  }
+
+  // ---------------------------------------------------------------- outline
+  // A day runs from its first booking to its last, and the gaps in between are
+  // the free slots. Only what blocks time counts: declined, cancelled, free and
+  // working-elsewhere entries do not, tentative ones as the user chooses.
+  function isTent(ev) { return ev.responseStatus === 'tentative' || ev.busyStatus === 'tentative'; }
+  function isBusy(ev) {
+    if (ev.isCancelled || ev.responseStatus === 'declined' || ev.busyStatus === 'free' || ev.busyStatus === 'workingElsewhere') return false;
+    return !(prefs.tentFree && isTent(ev));
+  }
+  function fmtDur(min) {
+    min = Math.round(min); if (min < 60) return min + ' min';
+    var r = min % 60; return Math.floor(min / 60) + 'h' + (r ? ('0' + r).slice(-2) : '');
+  }
+  // Minutes since midnight of day k; a time on a later day is that day's end.
+  function minOfDay(t, k) { return dayKey(t) === k ? t.getHours() * 60 + t.getMinutes() : 1440; }
+  function outlineDays(events) {
+    var days = {};
+    function day(k) { return days[k] || (days[k] = { blocks: [], oof: false }); }
+    events.forEach(function (ev) {
+      if (!isBusy(ev)) return;
+      var d = new Date(ev._s.getFullYear(), ev._s.getMonth(), ev._s.getDate()), n = 0;
+      if (ev.allDay) {
+        if (ev.busyStatus !== 'oof') return;
+        for (var last = new Date(ev._e.getTime() - 1); d <= last && n < 60; d.setDate(d.getDate() + 1), n++) day(dayKey(d)).oof = true;
+        return;
+      }
+      // Cut at each midnight, so an event into the next day counts on both.
+      for (; d < ev._e && n < 60; n++) {
+        var next = new Date(d); next.setDate(d.getDate() + 1);
+        var s = ev._s > d ? ev._s : d, e = ev._e < next ? ev._e : next;
+        if (e > s) day(dayKey(d)).blocks.push({ s: s, e: e, tent: isTent(ev), subj: ev.subject });
+        d = next;
+      }
+    });
+    Object.keys(days).forEach(function (k) {
+      var info = days[k], merged = [], gaps = [];
+      info.blocks.slice().sort(function (a, b) { return a.s - b.s; }).forEach(function (b) {
+        var m = merged[merged.length - 1];
+        if (m && b.s <= m.e) { if (b.e > m.e) m.e = b.e; } else merged.push({ s: b.s, e: b.e });
+      });
+      for (var i = 1; i < merged.length; i++) gaps.push({ s: merged[i - 1].e, e: merged[i].s });
+      info.merged = merged; info.gaps = gaps;
+    });
+    return days;
+  }
+  function outlineHtml(events, keys, now, todayKey) {
+    var days = outlineDays(events), none = { blocks: [], merged: [], gaps: [], oof: false };
+    var slot = prefs.slot, nowMin = now.getHours() * 60 + now.getMinutes();
+    // The list's days, less weekends with nothing that blocks time, plus any
+    // day that a booking runs into.
+    var set = {};
+    keys.forEach(function (k) { var wd = parseKey(k).getDay(); if (wd !== 0 && wd !== 6 || k === todayKey || days[k]) set[k] = true; });
+    Object.keys(days).forEach(function (k) { set[k] = true; });
+    var weeks = [], cur = null;
+    Object.keys(set).sort().forEach(function (k) {
+      var d = parseKey(k), w = isoWeek(d);
+      if (!cur || cur.w !== w) weeks.push(cur = { w: w, rows: [] });
+      cur.rows.push({ k: k, d: d, info: days[k] || none });
+    });
+
+    var html = '';
+    weeks.forEach(function (wk) {
+      // One time axis per week, from its earliest start to its latest end, so
+      // the days line up and an early start or late end stands out. Weekdays
+      // set it when they have bookings; a weekend night shift is just clipped.
+      var lo = Infinity, hi = -Infinity;
+      function extend(weekdays) {
+        wk.rows.forEach(function (r) {
+          var m = r.info.merged, wd = r.d.getDay(); if (!m.length || weekdays && (wd === 0 || wd === 6)) return;
+          lo = Math.min(lo, minOfDay(m[0].s, r.k)); hi = Math.max(hi, minOfDay(m[m.length - 1].e, r.k));
+        });
+      }
+      extend(true); if (lo > hi) extend(false);
+      if (lo > hi) { lo = 8 * 60; hi = 17 * 60; }
+      lo = Math.floor(lo / 60) * 60; hi = Math.max(lo + 60, Math.ceil(hi / 60) * 60);
+      var span = hi - lo, hours = span / 60, step = Math.max(1, Math.ceil(hours / 6));
+      function pct(min) { return (Math.min(Math.max(min - lo, 0), span) / span * 100).toFixed(2) + '%'; }
+      function seg(cls, a, b, k, title) {
+        var x = Math.max(minOfDay(a, k), lo), y = Math.min(minOfDay(b, k), hi);
+        if (y <= x) return '';
+        return '<i class="' + cls + '" style="left:' + pct(x) + ';width:' + ((y - x) / span * 100).toFixed(2) + '%" title="' + esc(title) + '"></i>';
+      }
+
+      var ticks = '';
+      for (var h = lo / 60; h <= hi / 60; h += step) {
+        ticks += '<span style="left:' + pct(h * 60) + (h * 60 === lo ? ';transform:none' : h * 60 === hi ? ';transform:translateX(-100%)' : '') + '">' + h + '</span>';
+      }
+      html += weekStart(wk.rows[0].d, true) + '<div class="orow scale"><span></span><span></span><div class="ticks">' + ticks + '</div></div>';
+
+      var list = '', upcoming = false;
+      wk.rows.forEach(function (r) {
+        var info = r.info, m = info.merged, isToday = r.k === todayKey, past = r.k < todayKey;
+        var when = info.oof ? '<span class="ot oof">out of office</span>'
+          : m.length ? '<span class="ot">' + esc(fmtTime(m[0].s)) + '–' + esc(fmtTime(m[m.length - 1].e)) + '</span>'
+          : '<span class="ot none">—</span>';
+        var bar = '';
+        info.gaps.forEach(function (g) { if (g.e - g.s >= slot * 6e4) bar += seg('g', g.s, g.e, r.k, fmtTime(g.s) + '–' + fmtTime(g.e) + ' free'); });
+        // Tentative first, so a firm booking on top of it shows solid.
+        info.blocks.slice().sort(function (a, b) { return b.tent - a.tent; }).forEach(function (b) {
+          bar += seg('b' + (b.tent ? ' tent' : ''), b.s, b.e, r.k, fmtTime(b.s) + '–' + fmtTime(b.e) + ' ' + (b.subj || ''));
+        });
+        if (isToday && nowMin > lo) {
+          bar += '<i class="pv" style="width:' + pct(nowMin) + '"></i>';
+          if (nowMin < hi) bar += '<i class="nw" style="left:' + pct(nowMin) + '"></i>';
+        }
+        html += '<div class="orow' + (isToday ? ' today' : '') + (past ? ' past' : '') + '" data-day="' + r.k + '" data-goto="' + r.k + '"' + (isToday ? ' id="today"' : '') + '>' +
+          '<span class="od">' + esc(fmtDayShort(r.d)) + '</span>' + when +
+          '<div class="tl" style="background-size:' + (100 / hours).toFixed(4) + '% 100%">' + bar + '</div></div>';
+
+        if (past) return;
+        upcoming = true;
+        if (info.oof) return;
+        if (!m.length) { list += slotHtml(r, '<span class="none">no bookings</span>', ''); return; }
+        info.gaps.forEach(function (g) {
+          var s = isToday && g.s < now ? now : g.s, len = (g.e - s) / 6e4;
+          if (len >= slot) list += slotHtml(r, esc(fmtTime(s)) + '–' + esc(fmtTime(g.e)), fmtDur(len));
+        });
+      });
+      if (upcoming) html += '<div class="slots"><h3>Free &#x2265; ' + slot + ' min</h3>' + (list || '<div class="none">No gap that long.</div>') + '</div>';
+      html += '</section>';
+    });
+    return html;
+  }
+  function slotHtml(r, when, len) {
+    return '<div class="slot" data-goto="' + r.k + '"><span class="od">' + esc(fmtDayShort(r.d)) + '</span><span>' + when + '</span>' +
+      '<span class="len">' + esc(len) + '</span></div>';
+  }
+  function syncViewBars() {
+    var outline = prefs.view === 'outline';
+    btnView.hidden = false;
+    btnView.innerHTML = outline ? '&#x2630;' : '&#x25A4;';
+    btnView.title = outline ? 'List' : 'Outline: free slots';
+    btnView.setAttribute('aria-label', outline ? 'Show list' : 'Show outline');
+    outlinebar.hidden = !outline;
+    var chips = outlinebar.querySelectorAll('[data-slot]');
+    for (var i = 0; i < chips.length; i++) chips[i].classList.toggle('on', Number(chips[i].getAttribute('data-slot')) === prefs.slot);
+    document.getElementById('btnTent').textContent = 'tentative: ' + (prefs.tentFree ? 'free' : 'busy');
+  }
+  // Switch views and keep the day the user is reading in view; the outline
+  // shows it within its week.
+  function setView(view, key) {
+    if (!key) { var t = topDay(); key = t && t.getAttribute('data-day'); }
+    prefs.view = view; ls(LS.view, view === 'outline' ? view : null);
+    closeCal(); render(false);
+    if (key) scrollToDay(key);
     updateWeekbar();
   }
   var HEAD = 100; // header + week bar, measured
@@ -447,10 +658,18 @@
   }
   function isWeek(el) { return !!el && el.classList.contains('week'); }
   function scrollToEl(el) { if (el) window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.pageYOffset - HEAD - GAP)); }
-  function scrollToday() { scrollToEl(document.getElementById('today')); }
+  function scrollToday() {
+    if (prefs.view === 'outline') scrollToDay(dayKey(new Date()));
+    else scrollToEl(document.getElementById('today'));
+  }
   // A day missing from the list (a free weekend) falls back to the day before
-  // it in the same week, else the next day shown.
+  // it in the same week, else the next day shown. The outline shows whole
+  // weeks, so there it is the day's week.
   function scrollToDay(key) {
+    if (prefs.view === 'outline') {
+      var wk = document.getElementById('w-' + isoWeek(parseKey(key)));
+      if (wk) return scrollToEl(wk);
+    }
     var days = main.querySelectorAll('.day[data-day]'), before = null, after = null;
     for (var i = 0; i < days.length; i++) {
       if (days[i].getAttribute('data-day') >= key) { after = days[i]; break; }
@@ -461,7 +680,7 @@
     scrollToEl(sameWeek || !after ? before : after);
   }
   function topDay() {
-    var days = main.querySelectorAll('.day[data-day]');
+    var days = main.querySelectorAll('[data-day]');
     for (var i = 0; i < days.length; i++) if (days[i].getBoundingClientRect().bottom > HEAD) return days[i];
     return null;
   }
@@ -568,6 +787,8 @@
 
   // ---------------------------------------------------------------- boot
   main.addEventListener('click', function (e) {
+    var go = e.target.closest ? e.target.closest('[data-goto]') : null;
+    if (go) { userNav(); setView('list', go.getAttribute('data-goto')); return; }
     var card = e.target.closest ? e.target.closest('.ev') : null;
     if (!card || e.target.tagName === 'A') return;
     var id = card.getAttribute('data-id');
@@ -587,6 +808,18 @@
   btnPrev.addEventListener('click', navTo(function () { stepWeek(-1); }));
   btnNext.addEventListener('click', navTo(function () { stepWeek(1); }));
   document.getElementById('btnNow').addEventListener('click', navTo(scrollToday));
+  btnView.addEventListener('click', function () {
+    if (!state.data) return;
+    userNav(); setView(prefs.view === 'outline' ? 'list' : 'outline');
+  });
+  outlinebar.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b || !state.data) return;
+    if (b.hasAttribute('data-slot')) { prefs.slot = Number(b.getAttribute('data-slot')); ls(LS.slot, String(prefs.slot)); }
+    else if (b.id === 'btnTent') { prefs.tentFree = !prefs.tentFree; ls(LS.tent, prefs.tentFree ? 'free' : null); }
+    else return;
+    render(false);
+  });
   window.addEventListener('wheel', userNav, { passive: true });
   window.addEventListener('touchmove', userNav, { passive: true });
   weekLabel.addEventListener('click', function (e) {
