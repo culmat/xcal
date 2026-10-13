@@ -944,8 +944,14 @@
   // Chrome hand out a bookmark without one) and serves the shell from cache
   // first, refreshing it in the background, so a launch never waits on the
   // network. A new version is therefore seen on the launch after the one that
-  // fetched it.
-  if ('serviceWorker' in navigator && window.isSecureContext) {
+  // fetched it. On localhost (serve.sh) it stays off, and one left from an
+  // earlier run is removed, so a reload always shows the working copy.
+  if ('serviceWorker' in navigator && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    navigator.serviceWorker.getRegistrations().then(function (regs) {
+      regs.forEach(function (r) { r.unregister(); });
+      if (window.caches) caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); });
+    }).catch(function () {});
+  } else if ('serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.register('sw.js').then(function (reg) {
       var check = function () { reg.update().catch(function () {}); };
       setInterval(check, 60 * 60 * 1000);
