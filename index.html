@@ -165,7 +165,9 @@
   .tl i { position: absolute; top: 0; bottom: 0; }
   .tl .b { background: var(--busy); }
   .tl .b.tent { background: repeating-linear-gradient(135deg, var(--busy) 0 3px, transparent 3px 6px); }
-  .tl .g { background: var(--free); }
+  .tl .g { background: var(--free); cursor: pointer; }
+  .tl .g.hl { background: var(--accent); }
+  .slot.hl { border-color: var(--accent); }
   .tl .nw { width: 2px; margin-left: -1px; background: var(--now); }
   .slots { margin: 10px 0 4px; font-size: 14px; }
   .slots h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
@@ -602,10 +604,10 @@
       lo = Math.floor(lo / 60) * 60; hi = Math.max(lo + 60, Math.ceil(hi / 60) * 60);
       var span = hi - lo, hours = span / 60, step = Math.max(1, Math.ceil(hours / 6));
       function pct(min) { return (Math.min(Math.max(min - lo, 0), span) / span * 100).toFixed(2) + '%'; }
-      function seg(cls, a, b, k, title) {
+      function seg(cls, a, b, k, title, attrs) {
         var x = Math.max(minOfDay(a, k), lo), y = Math.min(minOfDay(b, k), hi);
         if (y <= x) return '';
-        return '<i class="' + cls + '" style="left:' + pct(x) + ';width:' + ((y - x) / span * 100).toFixed(2) + '%" title="' + esc(title) + '"></i>';
+        return '<i class="' + cls + '" style="left:' + pct(x) + ';width:' + ((y - x) / span * 100).toFixed(2) + '%" title="' + esc(title) + '"' + (attrs || '') + '></i>';
       }
 
       var ticks = '';
@@ -621,7 +623,7 @@
           : m.length ? '<span class="ot">' + esc(info.fromNow ? 'now' : fmtTime(info.start)) + '–' + esc(fmtTime(m[m.length - 1].e)) + '</span>'
           : '<span class="ot none">' + (info.over ? 'done' : '—') + '</span>';
         var bar = '';
-        info.gaps.forEach(function (g) { if (g.e - g.s >= slot * 6e4) bar += seg('g', g.s, g.e, r.k, fmtTime(g.s) + '–' + fmtTime(g.e) + ' free'); });
+        info.gaps.forEach(function (g) { if (g.e - g.s >= slot * 6e4) bar += seg('g', g.s, g.e, r.k, fmtTime(g.s) + '–' + fmtTime(g.e) + ' free', gapAttrs(r.k, g)); });
         // Tentative first, so a firm booking on top of it shows solid.
         info.blocks.slice().sort(function (a, b) { return b.tent - a.tent; }).forEach(function (b) {
           bar += seg('b' + (b.tent ? ' tent' : ''), b.s, b.e, r.k, fmtTime(b.s) + '–' + fmtTime(b.e) + ' ' + (b.subj || ''));
@@ -643,8 +645,13 @@
     });
     return html;
   }
+  // A gap's bar segment and its list entry share these, so they highlight
+  // together and a tap on either marks the slot in the list.
+  function gapAttrs(k, g) {
+    return ' data-gap="' + g.s.getTime() + '" data-goto="' + k + '" data-s="' + g.s.getTime() + '" data-e="' + g.e.getTime() + '"';
+  }
   function slotHtml(r, when, len, gap) {
-    return '<div class="slot" data-goto="' + r.k + '"' + (gap ? ' data-s="' + gap.s.getTime() + '" data-e="' + gap.e.getTime() + '"' : '') + '>' +
+    return '<div class="slot"' + (gap ? gapAttrs(r.k, gap) : ' data-goto="' + r.k + '"') + '>' +
       '<span class="od">' + esc(fmtDayShort(r.d)) + '</span><span>' + when + '</span><span class="len">' + esc(len) + '</span></div>';
   }
 
@@ -836,6 +843,14 @@
   }
 
   // ---------------------------------------------------------------- boot
+  function hlGap(e, on) {
+    var t = e.target.closest ? e.target.closest('[data-gap]') : null;
+    if (!t || e.relatedTarget && t.contains(e.relatedTarget)) return;
+    var same = main.querySelectorAll('[data-gap="' + t.getAttribute('data-gap') + '"]');
+    for (var i = 0; i < same.length; i++) same[i].classList.toggle('hl', on);
+  }
+  main.addEventListener('mouseover', function (e) { hlGap(e, true); });
+  main.addEventListener('mouseout', function (e) { hlGap(e, false); });
   main.addEventListener('click', function (e) {
     var go = e.target.closest ? e.target.closest('[data-goto]') : null;
     if (go) {
